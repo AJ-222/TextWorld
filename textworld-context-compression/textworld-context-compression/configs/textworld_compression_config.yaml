@@ -1,0 +1,55 @@
+# Task config for the TextWorld context-compression project.
+# Consumed by ORBIT's own `data/prepare_gem_data.py::prepare_multi_task_gem_data`
+# (reused unmodified — see scripts/train_textworld_compression.py) and by
+# `envs/multi_episode_env.py::MultiEpisodeEnv.from_dict`, which folds any key here
+# that isn't one of its own config keys straight into
+# `inner_env_kwargs["env_kwargs"]` — i.e. every field below except env_id,
+# max_turns_per_episode, total_step_cap, train_size/test_size ends up as a kwarg on
+# `TextWorldEnvAdapter.__init__`.
+#
+# `total_step_cap` = 3 * max_turns_per_episode, matching the proposal's "3 episodes
+# of in-context adaptation" (Sec 3.3) — i.e. training/eval always runs exactly 3
+# episodes of the same task per trajectory before the outer rollout ends.
+#
+# NOTE on token budget: the proposal's L_max=4096 TOKENS (Sec 3.3) is enforced via
+# `data.max_prompt_length` / `data.max_response_length` in the training script, not
+# here — this file only controls TURN counts, which is a different (coarser) budget.
+
+train_tasks:
+  - env_id: "textworld-nav"
+    max_turns_per_episode: 30
+    total_step_cap: 90
+    train_size: 200 # Sec 3.4.1: 200 procedurally generated nav/foraging games
+    inner_env_class: "envs.textworld_env_adapter.TextWorldEnvAdapter"
+    split: "train_nav"
+    games_dir: "games" # relative to repo root; see data/generate_textworld_games.py
+    curriculum_enabled: true
+    curriculum_alpha0: 1.0 # Sec 3.6, alpha_0
+    curriculum_kappa: 0.05 # Sec 3.6, kappa (half-life ~14 epochs)
+    curriculum_gamma: 0.99
+    count_summarise_in_turns: true
+
+val_tasks:
+  # Held-out crafting distribution (Sec 3.4.2) — zero-shot OOD test. No curriculum
+  # shaping at eval time (Sec 3.6: "no shaping is applied" on the crafting split).
+  - env_id: "textworld-craft"
+    max_turns_per_episode: 40
+    total_step_cap: 120
+    test_size: 30 # Sec 3.4.2: 30 held-out crafting environments
+    inner_env_class: "envs.textworld_env_adapter.TextWorldEnvAdapter"
+    split: "test_craft"
+    games_dir: "games"
+    curriculum_enabled: false
+    count_summarise_in_turns: true
+
+  # Optional: also validate in-distribution (on held-out nav seeds) if you want a
+  # non-OOD sanity signal during training. Uncomment and point at a disjoint seed
+  # range / separate game pool if you generate one.
+  # - env_id: "textworld-nav-val"
+  #   max_turns_per_episode: 30
+  #   total_step_cap: 90
+  #   test_size: 30
+  #   inner_env_class: "envs.textworld_env_adapter.TextWorldEnvAdapter"
+  #   split: "train_nav"
+  #   games_dir: "games"
+  #   curriculum_enabled: false
